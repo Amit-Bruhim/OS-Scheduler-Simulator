@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <signal.h>
 #include <string.h>
+#include <stdlib.h>
 #define _XOPEN_SOURCE 700
 
 int PROCESSES_AMOUNT;
@@ -495,4 +496,13 @@ void runCPUScheduler(char *processesCsvFilePath, int timeQuantum)
     //         );
 
     //     }
+}
+
+int main(int argc, char *argv[]) {
+    char *processesCsvFilePath = argv[1];
+    int timeQuantum = atoi(argv[2]);
+
+    runCPUScheduler(processesCsvFilePath, timeQuantum);
+
+    return 0;
 }
