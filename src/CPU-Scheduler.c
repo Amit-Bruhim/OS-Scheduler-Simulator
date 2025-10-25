@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 199309L
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -6,7 +7,6 @@
 #include <signal.h>
 #include <string.h>
 #include <stdlib.h>
-#define _XOPEN_SOURCE 700
 
 /* Global: number of processes read from CSV */
 int PROCESSES_AMOUNT;
@@ -91,7 +91,6 @@ void run_non_preemptive_scheduler(next_process_fn next_process_index, const char
              mode_name);
     write(STDOUT_FILENO, buffer, strlen(buffer));
 
-    int total_time_waiting = 0;
     int time = 0;
     int done_processes = 0;
 
@@ -217,7 +216,7 @@ void parse(char *processesCsvFilePath)
         /* read one line from file and remove trailing newline */
         char line[256];
         fgets(line, sizeof(line), file);
-        int index = strcspn(line, "\n");
+        size_t index = strcspn(line, "\n");
         if (index < strlen(line))
             line[index] = 0;
 
@@ -486,6 +485,7 @@ void runCPUScheduler(char *processesCsvFilePath, int timeQuantum)
    --------------------------------------------------------------------- */
 int main(int argc, char *argv[])
 {
+    (void)argc; 
     char *processesCsvFilePath = argv[1];
     int timeQuantum = atoi(argv[2]);
 
