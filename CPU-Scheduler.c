@@ -30,6 +30,22 @@ typedef struct
     int is_done;
 } process;
 
+int next_fcfs(int current_time);
+int next_sjf(int current_time);
+int next_priority(int current_time);
+
+// Define non-preemptive schedulers in an array
+typedef struct
+{
+    const char *name;
+    int (*next_process)(int);
+} Scheduler;
+
+Scheduler non_preemptive_schedulers[] = {
+    {"FCFS", next_fcfs},
+    {"SJF", next_sjf},
+    {"Priority", next_priority}};
+
 // Function pointer type for selecting the next process
 typedef int (*next_process_fn)(int current_time);
 
@@ -39,11 +55,13 @@ process *processes[1000];
 void log_event(int start_time, int end_time, process *p, int is_idle);
 
 // Calculate average waiting time and print summary for any scheduler
-void print_summary(process **processes, int n) {
+void print_summary(process **processes, int n)
+{
     int total_time_waiting = 0;
 
     // Compute total waiting time
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++)
+    {
         total_time_waiting += processes[i]->compeletion_time - processes[i]->Burst_Time - processes[i]->Arrival_Time;
     }
 
@@ -52,12 +70,13 @@ void print_summary(process **processes, int n) {
     // Print summary
     snprintf(buffer, sizeof(buffer),
              "\n──────────────────────────────────────────────\n"
-             ">> Engine Status  : Completed\n"
-             ">> Summary        :\n"
-             "   └─ Average Waiting Time : %.2f time units\n"
-             ">> End of Report\n"
+             ">> \x1b[32mEngine Status\x1b[0m  : Completed\n"
+             ">> \x1b[32mSummary\x1b[0m        :\n"
+             "   └─ \x1b[32mAverage Waiting Time\x1b[0m : %.2f time units\n"
+             ">> \x1b[32mEnd of Report\x1b[0m\n"
              "══════════════════════════════════════════════\n\n",
              avg_waiting_time);
+
     write(STDOUT_FILENO, buffer, strlen(buffer));
 }
 
@@ -66,8 +85,8 @@ void run_non_preemptive_scheduler(next_process_fn next_process_index, const char
 {
     // Print header
     snprintf(buffer, sizeof(buffer), "══════════════════════════════════════════════\n"
-                                     ">> Scheduler Mode : %s\n"
-                                     ">> Engine Status  : Initialized\n"
+                                     ">> \x1b[32mScheduler Mode\x1b[0m : %s\n"
+                                     ">> \x1b[32mEngine Status\x1b[0m  : Initialized\n"
                                      "──────────────────────────────────────────────\n\n",
              mode_name);
     write(STDOUT_FILENO, buffer, strlen(buffer));
@@ -106,7 +125,7 @@ void run_non_preemptive_scheduler(next_process_fn next_process_index, const char
         pid_t pid = fork();
         if (pid == 0)
         {
-            alarm(1);
+            alarm(burst);
             pause();
             exit(0);
         }
@@ -308,8 +327,8 @@ void Round_Robin(int timeQuantum)
 {
     /* print header for Round Robin */
     snprintf(buffer, sizeof(buffer), "══════════════════════════════════════════════\n"
-                                     ">> Scheduler Mode : %s\n"
-                                     ">> Engine Status  : Initialized\n"
+                                     ">> \x1b[32mScheduler Mode\x1b[0m : %s\n"
+                                     ">> \x1b[32mEngine Status\x1b[0m  : Initialized\n"
                                      "──────────────────────────────────────────────\n\n",
              "Round Robin");
     write(STDOUT_FILENO, buffer, strlen(buffer));
@@ -404,10 +423,10 @@ void Round_Robin(int timeQuantum)
     /* print Round Robin summary with total turnaround time */
     snprintf(buffer, sizeof(buffer),
              "\n──────────────────────────────────────────────\n"
-             ">> Engine Status  : Completed\n"
-             ">> Summary        :\n"
-             "   └─ Total Turnaround Time : %d time units\n"
-             ">> End of Report\n"
+             ">> \x1b[32mEngine Status\x1b[0m  : Completed\n"
+             ">> \x1b[32mSummary\x1b[0m        :\n"
+             "   └─ \x1b[32mTotal Turnaround Time\x1b[0m : %d time units\n"
+             ">> \x1b[32mEnd of Report\x1b[0m\n"
              "══════════════════════════════════════════════\n\n",
              time);
     write(STDOUT_FILENO, buffer, strlen(buffer));
@@ -443,18 +462,19 @@ void runCPUScheduler(char *processesCsvFilePath, int timeQuantum)
 {
     PROCESSES_AMOUNT = count_processes(processesCsvFilePath);
     parse(processesCsvFilePath);
-    initialize();
-    sort(); // sort by arrival time
-    run_non_preemptive_scheduler(next_fcfs, "FCFS");
 
-    initialize();
-    sort();
-    run_non_preemptive_scheduler(next_sjf, "SJF");
+    int num_schedulers = sizeof(non_preemptive_schedulers) / sizeof(non_preemptive_schedulers[0]);
 
-    initialize();
-    sort();
-    run_non_preemptive_scheduler(next_priority, "Priority");
+    // Loop over each non-preemptive scheduler
+    for (int i = 0; i < num_schedulers; i++)
+    {
+        initialize();
+        sort(); // sort by arrival time
+        run_non_preemptive_scheduler(non_preemptive_schedulers[i].next_process,
+                                     non_preemptive_schedulers[i].name);
+    }
 
+    // Run Round Robin as before
     initialize();
     sort();
     Round_Robin(timeQuantum);
