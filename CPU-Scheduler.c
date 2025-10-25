@@ -30,10 +30,148 @@ typedef struct
     int is_done;
 } process;
 
+// Function pointer type for selecting the next process
+typedef int (*next_process_fn)(int current_time);
+
 /* Array that will hold pointers to allocated process structs */
 process *processes[1000];
 
 void log_event(int start_time, int end_time, process *p, int is_idle);
+
+// General non-preemptive scheduler
+void run_non_preemptive_scheduler(next_process_fn next_process_index, const char *mode_name)
+{
+    // Print header
+    snprintf(buffer, sizeof(buffer), "══════════════════════════════════════════════\n"
+                                     ">> Scheduler Mode : %s\n"
+                                     ">> Engine Status  : Initialized\n"
+                                     "──────────────────────────────────────────────\n\n",
+             mode_name);
+    write(STDOUT_FILENO, buffer, strlen(buffer));
+
+    int total_time_waiting = 0;
+    int time = 0;
+    int done_processes = 0;
+
+    while (done_processes < PROCESSES_AMOUNT)
+    {
+        int idx = next_process_index(time); // get next process to run
+        int burst = 0;
+        int is_idle = 0;
+
+        if (idx == -1)
+        {
+            // CPU idle until next arrival
+            int next = -1;
+            for (int i = 0; i < PROCESSES_AMOUNT; i++)
+            {
+                if (!processes[i]->is_done)
+                {
+                    next = i;
+                    break;
+                }
+            }
+            burst = processes[next]->Arrival_Time - time;
+            is_idle = 1;
+        }
+        else
+        {
+            burst = processes[idx]->Burst_Time;
+        }
+
+        // fork child to emulate process
+        pid_t pid = fork();
+        if (pid == 0)
+        {
+            alarm(1);
+            pause();
+            exit(0);
+        }
+        else
+        {
+            wait(NULL);
+            int start_time = time;
+            time += burst;
+
+            // log event for idle or running process
+            if (is_idle)
+            {
+                log_event(start_time, time, NULL, 1);
+            }
+            else
+            {
+                log_event(start_time, time, processes[idx], 0);
+                processes[idx]->compeletion_time = time;
+                processes[idx]->is_done = 1;
+                done_processes++;
+            }
+        }
+    }
+
+    // Compute average waiting time
+    for (int i = 0; i < PROCESSES_AMOUNT; i++)
+    {
+        process *p = processes[i];
+        total_time_waiting += p->compeletion_time - p->Burst_Time - p->Arrival_Time;
+    }
+    float avg_waiting_time = (float)total_time_waiting / PROCESSES_AMOUNT;
+
+    // Print summary
+    snprintf(buffer, sizeof(buffer),
+             "\n──────────────────────────────────────────────\n"
+             ">> Engine Status  : Completed\n"
+             ">> Summary        :\n"
+             "   └─ Average Waiting Time : %.2f time units\n"
+             ">> End of Report\n"
+             "══════════════════════════════════════════════\n\n",
+             avg_waiting_time);
+    write(STDOUT_FILENO, buffer, strlen(buffer));
+}
+
+// FCFS: return first not-done process in arrival order
+int next_fcfs(int current_time)
+{
+    for (int i = 0; i < PROCESSES_AMOUNT; i++)
+    {
+        if (!processes[i]->is_done && processes[i]->Arrival_Time <= current_time)
+            return i;
+    }
+    return -1; // idle
+}
+
+// SJF: return shortest job available
+int next_sjf(int current_time)
+{
+    int min_burst = INT_MAX;
+    int idx = -1;
+    for (int i = 0; i < PROCESSES_AMOUNT; i++)
+    {
+        process *p = processes[i];
+        if (!p->is_done && p->Arrival_Time <= current_time && p->Burst_Time < min_burst)
+        {
+            min_burst = p->Burst_Time;
+            idx = i;
+        }
+    }
+    return idx; // -1 if idle
+}
+
+// Priority: return highest priority available
+int next_priority(int current_time)
+{
+    int min_priority = INT_MAX;
+    int idx = -1;
+    for (int i = 0; i < PROCESSES_AMOUNT; i++)
+    {
+        process *p = processes[i];
+        if (!p->is_done && p->Arrival_Time <= current_time && p->Priority < min_priority)
+        {
+            min_priority = p->Priority;
+            idx = i;
+        }
+    }
+    return idx; // -1 if idle
+}
 
 /* ---------------------------------------------------------------------
    parse
@@ -144,310 +282,6 @@ void sort()
             }
         }
     }
-}
-
-/* ---------------------------------------------------------------------
-   FCFS
-   First-Come-First-Served (non-preemptive) simulation.
-   Uses fork/ alarm / pause / wait to emulate run segments.
-   --------------------------------------------------------------------- */
-void FCFS()
-{
-    /* print header for FCFS */
-    snprintf(buffer, sizeof(buffer), "══════════════════════════════════════════════\n"
-                                     ">> Scheduler Mode : %s\n"
-                                     ">> Engine Status  : Initialized\n"
-                                     "──────────────────────────────────────────────\n\n",
-             "FCFS");
-    write(STDOUT_FILENO, buffer, strlen(buffer));
-
-    /* scheduler runtime variables */
-    int total_time_waiting = 0;
-    int curr = 0;
-    int time = 0;
-    int starting_time = 0;
-    int is_idle = 0;
-
-    /* iterate processes in arrival order (array already sorted) */
-    while (curr < PROCESSES_AMOUNT)
-    {
-        process *p = processes[curr];
-        int burst = 0;
-        is_idle = 0;
-
-        /* if next process hasn't arrived yet, CPU is idle until arrival */
-        if (time < p->Arrival_Time)
-        {
-            is_idle = 1;
-        }
-
-        /* compute how long to advance time: idle gap or full burst */
-        if (is_idle)
-        {
-            burst = p->Arrival_Time - time;
-        }
-        else
-        {
-            burst = p->Burst_Time;
-        }
-
-        /* fork a child to emulate a process (child pauses until scheduled) */
-        pid_t pid = fork();
-        if (pid == 0)
-        {
-            alarm(1);
-            pause();
-        }
-        else
-        {
-            /* parent waits for child, advances the simulated time, prints entry */
-            wait(NULL);
-            starting_time = time;
-            time += burst;
-
-            log_event(starting_time, time, p, is_idle);
-
-            if (!is_idle)
-            {
-                p->compeletion_time = time;
-                curr++;
-            }
-        }
-    }
-
-    /* compute average waiting time */
-    for (int i = 0; i < PROCESSES_AMOUNT; i++)
-    {
-        process *p = processes[i];
-        total_time_waiting += p->compeletion_time - p->Burst_Time - p->Arrival_Time;
-    }
-    float avg_waiting_time = (float)total_time_waiting / PROCESSES_AMOUNT;
-
-    /* print FCFS summary */
-    snprintf(buffer, sizeof(buffer),
-             "\n──────────────────────────────────────────────\n"
-             ">> Engine Status  : Completed\n"
-             ">> Summary        :\n"
-             "   └─ Average Waiting Time : %.2f time units\n"
-             ">> End of Report\n"
-             "══════════════════════════════════════════════\n\n",
-             avg_waiting_time);
-    write(STDOUT_FILENO, buffer, strlen(buffer));
-}
-
-/* ---------------------------------------------------------------------
-   SJF
-   Shortest Job First (non-preemptive) scheduler simulation.
-   Selects ready process with smallest Burst_Time.
-   --------------------------------------------------------------------- */
-void SJF()
-{
-    /* print header for SJF */
-    snprintf(buffer, sizeof(buffer), "══════════════════════════════════════════════\n"
-                                     ">> Scheduler Mode : %s\n"
-                                     ">> Engine Status  : Initialized\n"
-                                     "──────────────────────────────────────────────\n\n",
-             "SJF");
-    write(STDOUT_FILENO, buffer, strlen(buffer));
-
-    int starting_time = 0;
-    int is_idle = 0;
-    int curr = -1;
-    int time = 0;
-    int total_time_waiting = 0;
-    int done_processes = 0;
-
-    /* loop until all processes are handled */
-    while (done_processes < PROCESSES_AMOUNT)
-    {
-        curr = -1;
-        int burst = 0;
-        int min_burst = INT_MAX;
-
-        /* find the ready process with the smallest burst time */
-        for (int i = 0; i < PROCESSES_AMOUNT; i++)
-        {
-            process *p = processes[i];
-            if (p->Arrival_Time > time || p->is_done == 1)
-                continue;
-            if (p->Burst_Time < min_burst)
-            {
-                min_burst = p->Burst_Time;
-                curr = i;
-            }
-        }
-
-        /* if no process is ready, advance to next arrival (idle) */
-        if (curr == -1)
-        {
-            is_idle = 1;
-            int next = 0;
-            for (int i = 0; i < PROCESSES_AMOUNT; i++)
-            {
-                if (processes[i]->is_done == 1)
-                    continue;
-                next = i;
-                break;
-            }
-            burst = processes[next]->Arrival_Time - time;
-        }
-        else
-        {
-            is_idle = 0;
-            burst = processes[curr]->Burst_Time;
-        }
-
-        /* fork a child to emulate the chosen process or idle period */
-        pid_t pid = fork();
-        if (pid == 0)
-        {
-            alarm(1);
-            pause();
-        }
-        else
-        {
-            /* parent waits for child, updates time and prints record */
-            wait(NULL);
-            starting_time = time;
-            time += burst;
-
-            process *p1 = processes[curr];
-            log_event(starting_time, time, p1, is_idle);
-            if (!is_idle)
-            {
-                done_processes++;
-                p1->compeletion_time = time;
-                p1->is_done = 1;
-            }
-        }
-    }
-
-    /* compute average waiting time after loop */
-    for (int i = 0; i < PROCESSES_AMOUNT; i++)
-    {
-        process *p = processes[i];
-        total_time_waiting += p->compeletion_time - p->Burst_Time - p->Arrival_Time;
-    }
-
-    float avg_waiting_time = (float)total_time_waiting / PROCESSES_AMOUNT;
-
-    /* print SJF summary */
-    snprintf(buffer, sizeof(buffer),
-             "\n──────────────────────────────────────────────\n"
-             ">> Engine Status  : Completed\n"
-             ">> Summary        :\n"
-             "   └─ Average Waiting Time : %.2f time units\n"
-             ">> End of Report\n"
-             "══════════════════════════════════════════════\n\n",
-             avg_waiting_time);
-    write(STDOUT_FILENO, buffer, strlen(buffer));
-}
-
-/* ---------------------------------------------------------------------
-   Priority_Scheduling
-   Non-preemptive priority scheduler. Lower Priority value => higher priority.
-   --------------------------------------------------------------------- */
-void Priority_Scheduling()
-{
-    /* header for Priority scheduling */
-    snprintf(buffer, sizeof(buffer), "══════════════════════════════════════════════\n"
-                                     ">> Scheduler Mode : %s\n"
-                                     ">> Engine Status  : Initialized\n"
-                                     "──────────────────────────────────────────────\n\n",
-             "Priority");
-    write(STDOUT_FILENO, buffer, strlen(buffer));
-
-    int starting_time = 0;
-    int is_idle = 0;
-    int curr = -1;
-    int time = 0;
-    int total_time_waiting = 0;
-    int done_processes = 0;
-
-    /* main loop until all are scheduled */
-    while (done_processes < PROCESSES_AMOUNT)
-    {
-        curr = -1;
-        int burst = 0;
-        int min_priority = INT_MAX;
-
-        /* choose ready process with smallest priority value */
-        for (int i = 0; i < PROCESSES_AMOUNT; i++)
-        {
-            process *p = processes[i];
-            if (p->Arrival_Time > time || p->is_done == 1)
-                continue;
-            if (p->Priority < min_priority)
-            {
-                min_priority = p->Priority;
-                curr = i;
-            }
-        }
-
-        /* if none ready, advance to next arrival time */
-        if (curr == -1)
-        {
-            is_idle = 1;
-            int next = 0;
-            for (int i = 0; i < PROCESSES_AMOUNT; i++)
-            {
-                if (processes[i]->is_done == 1)
-                    continue;
-                next = i;
-                break;
-            }
-            burst = processes[next]->Arrival_Time - time;
-        }
-        else
-        {
-            is_idle = 0;
-            burst = processes[curr]->Burst_Time;
-        }
-
-        /* fork to emulate CPU running the selected slot */
-        pid_t pid = fork();
-        if (pid == 0)
-        {
-            alarm(1);
-            pause();
-        }
-        else
-        {
-            /* parent handles timing and output */
-            wait(NULL);
-            starting_time = time;
-            time += burst;
-
-            process *p1 = processes[curr];
-            log_event(starting_time, time, p1, is_idle);
-            if (!is_idle)
-            {
-                done_processes++;
-                p1->compeletion_time = time;
-                p1->is_done = 1;
-            }
-        }
-    }
-
-    /* compute average waiting time for priority scheduler */
-    for (int i = 0; i < PROCESSES_AMOUNT; i++)
-    {
-        process *p = processes[i];
-        total_time_waiting += p->compeletion_time - p->Burst_Time - p->Arrival_Time;
-    }
-
-    float avg_waiting_time = (float)total_time_waiting / PROCESSES_AMOUNT;
-
-    /* print summary for Priority scheduling */
-    snprintf(buffer, sizeof(buffer),
-             "\n──────────────────────────────────────────────\n"
-             ">> Engine Status  : Completed\n"
-             ">> Summary        :\n"
-             "   └─ Average Waiting Time : %.2f time units\n"
-             ">> End of Report\n"
-             "══════════════════════════════════════════════\n\n",
-             avg_waiting_time);
-    write(STDOUT_FILENO, buffer, strlen(buffer));
 }
 
 /* ---------------------------------------------------------------------
@@ -604,14 +438,17 @@ void runCPUScheduler(char *processesCsvFilePath, int timeQuantum)
     PROCESSES_AMOUNT = count_processes(processesCsvFilePath);
     parse(processesCsvFilePath);
     initialize();
-    sort();
-    FCFS();
+    sort(); // sort by arrival time
+    run_non_preemptive_scheduler(next_fcfs, "FCFS");
+
     initialize();
     sort();
-    SJF();
+    run_non_preemptive_scheduler(next_sjf, "SJF");
+
     initialize();
     sort();
-    Priority_Scheduling();
+    run_non_preemptive_scheduler(next_priority, "Priority");
+
     initialize();
     sort();
     Round_Robin(timeQuantum);
