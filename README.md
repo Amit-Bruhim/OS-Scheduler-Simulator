@@ -45,6 +45,11 @@ This project demonstrates **process creation (`fork`)**, **signal handling (`SIG
 - Git (to clone the repository)  
 
 ---
+## Installation
+
+Follow these steps to set up the project locally:
+
+---
 
 ### 1. Clone the repository
 ```bash
