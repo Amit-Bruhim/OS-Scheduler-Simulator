@@ -38,6 +38,29 @@ process *processes[1000];
 
 void log_event(int start_time, int end_time, process *p, int is_idle);
 
+// Calculate average waiting time and print summary for any scheduler
+void print_summary(process **processes, int n) {
+    int total_time_waiting = 0;
+
+    // Compute total waiting time
+    for (int i = 0; i < n; i++) {
+        total_time_waiting += processes[i]->compeletion_time - processes[i]->Burst_Time - processes[i]->Arrival_Time;
+    }
+
+    float avg_waiting_time = (float)total_time_waiting / n;
+
+    // Print summary
+    snprintf(buffer, sizeof(buffer),
+             "\n──────────────────────────────────────────────\n"
+             ">> Engine Status  : Completed\n"
+             ">> Summary        :\n"
+             "   └─ Average Waiting Time : %.2f time units\n"
+             ">> End of Report\n"
+             "══════════════════════════════════════════════\n\n",
+             avg_waiting_time);
+    write(STDOUT_FILENO, buffer, strlen(buffer));
+}
+
 // General non-preemptive scheduler
 void run_non_preemptive_scheduler(next_process_fn next_process_index, const char *mode_name)
 {
@@ -108,24 +131,7 @@ void run_non_preemptive_scheduler(next_process_fn next_process_index, const char
         }
     }
 
-    // Compute average waiting time
-    for (int i = 0; i < PROCESSES_AMOUNT; i++)
-    {
-        process *p = processes[i];
-        total_time_waiting += p->compeletion_time - p->Burst_Time - p->Arrival_Time;
-    }
-    float avg_waiting_time = (float)total_time_waiting / PROCESSES_AMOUNT;
-
-    // Print summary
-    snprintf(buffer, sizeof(buffer),
-             "\n──────────────────────────────────────────────\n"
-             ">> Engine Status  : Completed\n"
-             ">> Summary        :\n"
-             "   └─ Average Waiting Time : %.2f time units\n"
-             ">> End of Report\n"
-             "══════════════════════════════════════════════\n\n",
-             avg_waiting_time);
-    write(STDOUT_FILENO, buffer, strlen(buffer));
+    print_summary(processes, PROCESSES_AMOUNT);
 }
 
 // FCFS: return first not-done process in arrival order
